@@ -54,10 +54,8 @@ class EventHandler
             // down
             if ($last_state_status == 'down') { return; }
 
-            if ($last_state_status !== null) {
-                // going up
-                $this->handleGoDown($check_id, $event);
-            }
+            // always handle down events
+            $this->handleGoDown($check_id, $event);
 
             // save state
             $this->changeStatus('down', $check_id, $event);
