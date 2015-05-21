@@ -79,7 +79,8 @@ class EventHandler
     protected function handleGoDown($check_id, $event) {
         print "Now DOWN: $check_id\n";
         $name = $event['Name'];
-        $this->email("Service DOWN: $name", "Service $name is now DOWN.\n\n".date("Y-m-d H:i:s"), $this->buildRecipients($check_id));
+        $note = $event['Notes'];
+        $this->email("Service DOWN: $name", "Service $name is now DOWN.\n\n".($note?$note."\n\n":'').date("Y-m-d H:i:s"), $this->buildRecipients($check_id));
 
     }
 
