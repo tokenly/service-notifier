@@ -48,7 +48,15 @@ class Store
 
     public function findAllStates() {
         $states = R::getAll('SELECT * FROM `state` ORDER BY `timestamp`'); 
-        return $states;
+        return R::convertToBeans('state', $states);
+    }
+    public function findAllStateIDs() {
+        $states = R::getAll('SELECT check_id FROM `state` ORDER BY `timestamp`'); 
+        $out = [];
+        foreach($states as $state) {
+            $out[] = $state['check_id'];
+        }
+        return $out;
     }
     public function findByID($check_id) {
         return R::findOne( 'state', 'check_id = ?', [ $check_id ] );
