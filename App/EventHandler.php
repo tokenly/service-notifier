@@ -6,6 +6,7 @@ use App\Cmd;
 use App\Log;
 use App\Store;
 use Exception;
+use Maknz\Slack\Client;
 use Mandrill;
 
 /**
@@ -73,15 +74,13 @@ class EventHandler
     protected function handleGoUp($check_id, $event) {
         print "Now UP: $check_id\n";
         $name = $event['Name'];
-        $this->email("Service UP: $name", "Service $name is now UP.\n\n".date("Y-m-d H:i:s"), $this->buildRecipients($check_id));
-
+        $this->notify('up', $name, $check_id);
     }
     protected function handleGoDown($check_id, $event) {
         print "Now DOWN: $check_id\n";
         $name = $event['Name'];
         $note = ltrim($event['Notes']."\n".$event['Output']);
-        $this->email("Service DOWN: $name", "Service $name is now DOWN.\n\n".($note?$note."\n\n":'').date("Y-m-d H:i:s"), $this->buildRecipients($check_id));
-
+        $this->notify('down', $name, $check_id, $note);
     }
 
     protected function changeStatus($status, $check_id, $event) {
@@ -91,20 +90,57 @@ class EventHandler
         $this->store->storeState($state);
     }
 
+    public function notify($status, $name, $check_id, $note=null) {
+        $should_email = !!getenv('EMAIL_NOTIFICATIONS') AND getenv('EMAIL_NOTIFICATIONS') != 'false';
+        if ($should_email) {
+            if ($status == 'up') {
+                $this->email("Service UP: $name", "Service $name is now UP.\n\n".date("Y-m-d H:i:s"), $this->buildEmailRecipients($check_id));
+            }
+            if ($status == 'down') {
+                $this->email("Service DOWN: $name", "Service $name is now DOWN.\n\n".($note?$note."\n\n":'').date("Y-m-d H:i:s"), $this->buildEmailRecipients($check_id));
+            }
+        }
+
+        $should_slack = !!getenv('SLACK_NOTIFICATIONS') AND getenv('SLACK_NOTIFICATIONS') != 'false';
+        if ($should_slack) {
+            if ($status == 'up') {
+                $this->slack($status, "$name", "Service $name is now UP.");
+            }
+            if ($status == 'down') {
+                $this->slack($status, "$name", "Service $name is now DOWN.".($note ? "\n".$note : ''));
+            }
+        }
+
+    }
 
 
     protected function __construct() {
         $this->store = Store::instance();
     }
 
-    protected function buildRecipients($check_id) {
-        return [
+    protected function buildEmailRecipients($check_id) {
+        $recipients = [
             [
-                'email' => 'dweller@devonweller.com',
-                'name'  => 'Devon Weller',
+                'email' => getenv('EMAIL_RECIPIENT_EMAIL'),
+                'name'  => getenv('EMAIL_RECIPIENT_NAME'),
                 'type'  => 'to',
             ],
         ];
+
+        if (getenv('EMAIL_CC_EMAILS')) {
+            $emails = explode('|', getenv('EMAIL_CC_EMAILS'));
+            $names = explode('|', getenv('EMAIL_CC_NAMES'));
+
+            foreach($emails as $offset => $email) {
+                $recipients[] = [
+                    'email' => $email,
+                    'name'  => isset($names[$offset]) ? $names[$offset] : '',
+                    'type'  => 'cc',
+                ];
+            }
+        }
+
+        return $recipients;
     }
 
     protected function email($subject, $text, $recipients) {
@@ -134,6 +170,29 @@ class EventHandler
             Log::logError($e);
         }
 
+    }
+
+
+    protected function slack($status, $subject, $text) {
+        $client = $this->getSlackClient();
+        $client
+            ->from($status == 'up' ? getenv('SLACK_USERNAME_UP') : getenv('SLACK_USERNAME_DOWN'))
+            ->withIcon($status == 'up' ? ':white_check_mark:' : ':exclamation:')
+            ->send('*'.$subject.'*'."\n".$text);
+
+    }
+
+    protected function getSlackClient() {
+        if (!isset($this->slack_client)) {
+            $settings = [
+                'username'   => getenv('SLACK_USERNAME_UP'),
+                'channel'    => getenv('SLACK_CHANNEL'),
+                'link_names' => true,
+            ];
+            echo "endpoint: ".getenv('SLACK_ENDPOINT')."\n";
+            $this->slack_client = new Client(getenv('SLACK_ENDPOINT'), $settings);
+        }
+        return $this->slack_client;
     }
 
 }
